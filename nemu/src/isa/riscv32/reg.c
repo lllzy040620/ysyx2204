@@ -24,6 +24,14 @@ const char *regs[] = {
 };
 
 void isa_reg_display() {
+  // print Registers for riscv32
+  // in the pattern regName, value in Hexadecimal format, Value in Decimal format
+  
+  int reg_num = sizeof(regs) / sizeof(regs[0]); // 32 for rv32, 64 for rv64
+  for(int i = 0; i < reg_num; i++)
+  {
+    printf("%-4s  0x%08x    %-8d\n", regs[i], cpu.gpr[i], cpu.gpr[i]);
+  }
 }
 
 word_t isa_reg_str2val(const char *s, bool *success) {

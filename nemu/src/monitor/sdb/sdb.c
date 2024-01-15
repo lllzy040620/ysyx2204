@@ -43,13 +43,56 @@ static char* rl_gets() {
 }
 
 static int cmd_c(char *args) {
-  cpu_exec(-1);
+  cpu_exec(-1); // cpu_exec()接受的参数是uin64_t类型，因此-1意味着一个很大的整数
   return 0;
 }
 
-
 static int cmd_q(char *args) {
+  nemu_state.state = NEMU_QUIT;
   return -1;
+}
+
+static int cmd_si(char *args)
+{
+  /* extract the first argument */
+  char *arg = strtok(NULL, " ");
+  int N; // denoted for N in "si [N]"
+
+  if (arg == NULL)
+  {
+    /* no argument given */
+    N = 1;
+  }
+  else 
+  {
+    N = atoi(arg);
+  }
+  
+  cpu_exec(N);
+
+  return 0;
+}
+
+static int cmd_info(char *args)
+{
+  /* extract the first argument */
+  char *arg = strtok(NULL, " ");
+
+  if (strcmp(arg, "r") == 0)
+  {
+    isa_reg_display(); // print status of Registers
+  }
+  else if (strcmp(arg, "w") == 0)
+  {
+
+  }
+  else
+  {
+    // exceptions
+    printf("Error argument input: r for Registers, w for watch points.\n");
+  }
+
+  return 0;
 }
 
 static int cmd_help(char *args);
@@ -62,6 +105,12 @@ static struct {
   { "help", "Display information about all supported commands", cmd_help },
   { "c", "Continue the execution of the program", cmd_c },
   { "q", "Exit NEMU", cmd_q },
+  { "si", "Execute ONE single step instruction", cmd_si },
+  { "info", "Print the status of Registers / Watchpoints", cmd_info },
+  // { "x", "Scan the memory", cmd_x },
+  // { "p", "", cmd_p },
+  // { "w", "", cmd_w },
+  // { "d", "", cmd_d },
 
   /* TODO: Add more commands */
 

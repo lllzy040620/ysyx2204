@@ -31,5 +31,5 @@ int main(int argc, char *argv[]) {
   /* Start engine. */
   engine_start();
 
-  return is_exit_status_bad();
+  return is_exit_status_bad();  // pa1未能优雅退出的本质原因 : makefile会检查每条命令执行的结果，若非0均报错
 }
