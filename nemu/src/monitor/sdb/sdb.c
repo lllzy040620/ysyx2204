@@ -19,6 +19,8 @@
 #include <readline/history.h>
 #include "sdb.h"
 
+#include <memory/vaddr.h> // added for cmd_x
+
 static int is_batch_mode = false;
 
 void init_regex();
@@ -84,12 +86,43 @@ static int cmd_info(char *args)
   }
   else if (strcmp(arg, "w") == 0)
   {
-
+    // TODO: watchpoint
   }
   else
   {
     // exceptions
     printf("Error argument input: r for Registers, w for watch points.\n");
+  }
+
+  return 0;
+}
+
+static int cmd_x(char *args)
+{
+  /* extract the arguments */
+  char *arg = strtok(NULL, " ");
+  char *expr = strtok(NULL, " ");
+
+  // check argument security
+  if (arg == NULL || expr == NULL)
+  {
+    printf("Arguments missing for 'x N EXPR'\n");
+  }
+  else
+  {
+    int N = atoi(arg); // N : consecutive N 4-byte memory
+    char *expr_end;
+
+    int addr = strtol(expr, &expr_end, 16);
+
+    // printf("%s: ", expr);
+    // printf("%s: %d", expr, addr);
+
+    for (int i = 0; i < N; i++)
+    {
+      printf("0x%08x:    0x%08x\n", addr, vaddr_read(addr, 4));
+      addr += 4;
+    }
   }
 
   return 0;
@@ -107,7 +140,7 @@ static struct {
   { "q", "Exit NEMU", cmd_q },
   { "si", "Execute ONE single step instruction", cmd_si },
   { "info", "Print the status of Registers / Watchpoints", cmd_info },
-  // { "x", "Scan the memory", cmd_x },
+  { "x", "Scan the memory", cmd_x },
   // { "p", "", cmd_p },
   // { "w", "", cmd_w },
   // { "d", "", cmd_d },
