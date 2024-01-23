@@ -21,7 +21,7 @@
 #include <regex.h>
 
 enum {
-  TK_NOTYPE = 256, TK_EQ,
+  TK_NOTYPE = 256, TK_EQ, TK_NUM, 
 
   /* TODO: Add more token types */
 
@@ -37,7 +37,17 @@ static struct rule {
    */
 
   {" +", TK_NOTYPE},    // spaces
+
   {"\\+", '+'},         // plus
+  {"\\-", '-'},         // subtraction
+  {"\\*", '*'},         // multiplication
+  {"\\/", '/'},         // division
+  
+  {"\\(", '('},         // brackets
+  {"\\)", ')'},
+
+  {"[0-9]+", TK_NUM},    // numbers
+  
   {"==", TK_EQ},        // equal
 };
 
@@ -81,6 +91,11 @@ static bool make_token(char *e) {
     /* Try all rules one by one. */
     for (i = 0; i < NR_REGEX; i ++) {
       if (regexec(&re[i], e + position, 1, &pmatch, 0) == 0 && pmatch.rm_so == 0) {
+
+        // regcomp()  ->  regexec()  ->  regfree()
+        // 编译正则表达式 -> 匹配正则表达式 -> 释放正则表达式
+        // int regexec (regex_t *compiled, char *string, size_t nmatch, regmatch_t matchptr [], int eflags)
+
         char *substr_start = e + position;
         int substr_len = pmatch.rm_eo;
 
@@ -94,9 +109,16 @@ static bool make_token(char *e) {
          * of tokens, some extra actions should be performed.
          */
 
-        switch (rules[i].token_type) {
-          default: TODO();
+        tokens[nr_token].type = rules[i].token_type;
+
+        switch (rules[i].token_type)
+        {
+          case TK_NUM:
+            strncpy(tokens[nr_token].str, substr_start, substr_len);
+            tokens[nr_token].str[substr_len] = '\0';
         }
+
+        nr_token++;
 
         break;
       }
@@ -111,15 +133,136 @@ static bool make_token(char *e) {
   return true;
 }
 
+// verify the parentheses : STACK-like solution
+bool check_parentheses(int p, int q)
+{
+  bool res = false;
+  int l_bracketsNum_toCompare = 0;
+
+  for (int i = p; i<= q && tokens[p].type == '('; i++)
+  {
+    if (tokens[i].type == '(')
+    {
+      l_bracketsNum_toCompare++;
+    }
+    else if (tokens[i].type == ')')
+    {
+      if (i != q)
+      {
+        if (l_bracketsNum_toCompare >= 2)
+        {
+          l_bracketsNum_toCompare--;
+        }
+        else
+        {
+          res = false;
+          break;
+        }
+      }
+      else
+      {
+        if (l_bracketsNum_toCompare == 1)
+        {
+          res = true;
+        }
+      }
+    }
+  }
+
+  return res; 
+}
+
+int find_major_op (int p, int q) // TODO: hard to calculate 123+(456+789) or illegal expression like 123+
+{
+  int in_brackets_level = 0; // Default : not in brackets
+  int major_op_location = -1; // Init : do not exist
+  int major_op_type_history = 0; // stand for current layer, 1 for '+ -', 0 for '* /'
+
+  for (int i = p; i <= q; i++)
+  {
+    if (tokens[i].type == TK_NUM)
+    {
+      continue;
+    }
+    else if ((tokens[i].type == '+' || tokens[i].type == '-') && in_brackets_level == 0)
+    {
+      major_op_location = i;
+      major_op_type_history = 1;
+    }
+    else if ((tokens[i].type == '*' || tokens[i].type == '/') && major_op_type_history == 0 && in_brackets_level == 0)
+    {
+      major_op_location = i;
+    }
+    else if (tokens[i].type == '(')
+    {
+      in_brackets_level++;
+    }
+    else if (tokens[i].type == ')')
+    {
+      in_brackets_level--;
+    }
+    else
+    {
+      // Log("Error 404");
+      continue;
+    }
+  }
+
+  return major_op_location;
+}
+
+// divide-and-conquer Algorithm
+word_t eval(int p, int q, bool *ok)
+{
+  if (p > q)
+  {
+    Log("Error 404\n");
+    *ok = false;
+    assert(0);
+  }
+  else if (p == q)
+  {
+    if (tokens[p].type != TK_NUM)
+    {
+      Log("Bad expression\n");
+      *ok = false;
+    }
+    else
+    {
+      *ok = true;
+      return atoi(tokens[p].str);
+    }
+  }
+  else if (check_parentheses(p, q) == true)
+  {
+    return eval(p + 1, q - 1, ok);
+  }
+  else
+  {
+    int op = find_major_op(p, q);
+    int val1 = eval(p, op - 1, ok);
+    int val2 = eval(op + 1, q, ok);
+
+    switch (tokens[op].type)
+    {
+      case '+': return val1 + val2; break;
+      case '-': return val1 - val2; break;
+      case '*': return val1 * val2; break;
+      case '/': return val1 / val2; break;
+      default: assert(0);
+    }
+  }
+
+  return 0;
+}
 
 word_t expr(char *e, bool *success) {
   if (!make_token(e)) {
     *success = false;
-    return 0;
+    return 0; 
   }
 
-  /* TODO: Insert codes to evaluate the expression. */
-  TODO();
+  // TODO: can not solve the '(2 - 1)' of spaces
 
-  return 0;
+  return eval(0, nr_token - 1, success);
 }

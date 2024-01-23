@@ -115,9 +115,6 @@ static int cmd_x(char *args)
 
     int addr = strtol(expr, &expr_end, 16);
 
-    // printf("%s: ", expr);
-    // printf("%s: %d", expr, addr);
-
     for (int i = 0; i < N; i++)
     {
       printf("0x%08x:    0x%08x\n", addr, vaddr_read(addr, 4));
@@ -125,6 +122,22 @@ static int cmd_x(char *args)
     }
   }
 
+  return 0;
+}
+
+static int cmd_p(char *args)
+{
+  bool success;
+  word_t res = expr(args, &success);
+
+  if (!success)
+  {
+    puts("invalid expression");
+  } 
+  else
+  {
+    printf("%u\n", res);
+  }
   return 0;
 }
 
@@ -141,7 +154,7 @@ static struct {
   { "si", "Execute ONE single step instruction", cmd_si },
   { "info", "Print the status of Registers / Watchpoints", cmd_info },
   { "x", "Scan the memory", cmd_x },
-  // { "p", "", cmd_p },
+  { "p", "Calculate the value of Expression", cmd_p },
   // { "w", "", cmd_w },
   // { "d", "", cmd_d },
 
