@@ -19,9 +19,11 @@
  * Type 'man regex' for more information about POSIX regex functions.
  */
 #include <regex.h>
+#include <string.h>
 
 enum {
-  TK_NOTYPE = 256, TK_EQ, TK_NUM, TK_PLUS_NEGTIVE, TK_SUB_NEGTIVE,
+  TK_NOTYPE = 256, TK_EQ, TK_NUM, TK_PLUS_NEGTIVE, TK_SUB_NEGTIVE, 
+  TK_HEX_NUM, TK_REG, TK_NOT_EQ, TK_LOGICAL_AND, TK_DEREF, TK_VAR
 
   /* TODO: Add more token types */
 
@@ -49,9 +51,14 @@ static struct rule {
   {"\\(", '('},         // brackets
   {"\\)", ')'},
 
-  {"[0-9]+", TK_NUM},    // numbers
-  
-  {"==", TK_EQ},        // equal
+  // {"0[xX][0-9a-fA-F]+", TK_HEX_NUM},     // hex numbers
+  {"[0-9]+|0[xX][0-9a-fA-F]+", TK_NUM},                    // numbers & hex numbers
+  {"\\$\\w+", TK_REG},                   // registers
+  {"[a-zA-Z_][a-zA-Z_0-9]*", TK_VAR}, // variable
+
+  {"==", TK_EQ},           // equal
+  {"!=", TK_NOT_EQ},       // not equal
+  {"&&", TK_LOGICAL_AND},  // logical AND
 };
 
 #define NR_REGEX ARRLEN(rules)
@@ -127,6 +134,24 @@ static bool make_token(char *e) {
           case TK_NUM:
             strncpy(tokens[nr_token].str, substr_start, substr_len);
             tokens[nr_token].str[substr_len] = '\0';
+            if (strncmp(tokens[nr_token].str, "0x", 2) == 0 || strncmp(tokens[nr_token].str, "0X", 2) == 0)
+            {
+              // for hex, its value will be converted into dec
+              word_t dec_num = 0;
+              dec_num = strtol(tokens[nr_token].str, NULL, 16);
+              sprintf(tokens[nr_token].str, "%u", dec_num);
+              // after coverting, the value shows in dec
+            }
+            break;
+          case TK_REG:
+            strncpy(tokens[nr_token].str, substr_start, substr_len);
+            tokens[nr_token].str[substr_len] = '\0';
+            bool success = false;
+            
+            word_t dec_val = 0;
+            dec_val = isa_reg_str2val(tokens[nr_token].str+1, &success);
+            sprintf(tokens[nr_token].str, "%u", dec_val);
+            if (!success) puts("reg error");
             break;
         }
 
@@ -192,7 +217,7 @@ int find_major_op (int p, int q) // TODO: hard to calculate 123+(456+789) or ill
 
   for (int i = p; i <= q; i++)
   {
-    if (tokens[i].type == TK_NUM)
+    if (tokens[i].type == TK_NUM || tokens[i].type == TK_REG)
     {
       continue;
     }
@@ -244,7 +269,8 @@ word_t eval(int p, int q, bool *ok)
   }
   else if (p == q)
   {
-    if (tokens[p].type != TK_NUM)
+    // the last value should be NUM or REG
+    if (tokens[p].type != TK_NUM && tokens[p].type != TK_REG)
     {
       Log("Bad expression\n");
       *ok = false;
@@ -290,6 +316,16 @@ word_t expr(char *e, bool *success)
     
     return 0; 
   }
+
+  // to recognise DEREFERENCE '*' 
+  for (int i = 0; i < nr_token; i ++)
+  {
+    if (tokens[i].type == '*' && (i == 0 || tokens[i - 1].type == '+' || tokens[i - 1].type == '-') ) 
+    {
+      tokens[i].type = TK_DEREF;
+      puts("DEREF recognized!\n");
+    }
+}
 
   // semantic analysis & evaluation
   word_t result = eval(0, nr_token - 1, success);

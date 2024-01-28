@@ -34,6 +34,20 @@ void isa_reg_display() {
   }
 }
 
-word_t isa_reg_str2val(const char *s, bool *success) {
+word_t isa_reg_str2val(const char *s, bool *success)
+{
+  *success = false;
+  int reg_num = sizeof(regs) / sizeof(regs[0]);
+
+  // traversal lookup
+  for(int i = 0; i < reg_num; i++)
+  {
+    if (!strcmp(s, regs[i]))
+    {
+      *success = true;
+      return cpu.gpr[i];
+    }
+  }
+
   return 0;
 }
