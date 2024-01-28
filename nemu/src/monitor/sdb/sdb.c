@@ -229,9 +229,62 @@ void sdb_mainloop() {
   }
 }
 
+void init_exprTEST()
+{
+  FILE *fp = fopen("/home/leizhenyu/opt/ysyx-workbench/nemu/tools/gen-expr/input", "r");
+  if (fp == NULL) Log("init_exprTEST error");
+
+  char expr_buff[1024] = {};    // expression
+  int line_num = 0;
+  int line_length = 0;
+
+  int correct_times = 0;
+
+  while(fgets(expr_buff, 1024, fp))
+  {
+    line_num++;
+    line_length = strlen(expr_buff);
+
+    if (line_length > 0 && expr_buff[line_length - 1] == '\n')
+    {
+      expr_buff[line_length - 1] = '\0';
+    }
+
+    char *correct_result = NULL;
+    char *expression = NULL;
+    char *split_index = strchr(expr_buff, ' '); // the first space is split char
+
+    *split_index = '\0';  // split the expr_buff into two pieces
+
+    correct_result = expr_buff;
+    expression = split_index + 1;
+
+    // BELOW: to compare the input 'cor_result' and function 'expr()'
+    bool success = false;
+    word_t funcExpr_result = expr(expression, &success);
+
+    if (funcExpr_result == atoi(correct_result))
+    { 
+      correct_times++;
+      puts("yesok");
+    }
+
+    printf("linenum: %d, funExpr_result: %u, correct result: %s\n", line_num, funcExpr_result, correct_result);
+  }
+
+  fclose(fp);
+
+  float res = correct_times/line_num;
+  printf("correct rate: %f\n", res);
+  Log("expr test pass");
+}
+
 void init_sdb() {
   /* Compile the regular expressions. */
   init_regex();
+
+  //
+  init_exprTEST();
 
   /* Initialize the watchpoint pool. */
   init_wp_pool();

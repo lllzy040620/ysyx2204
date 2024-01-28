@@ -21,7 +21,7 @@
 #include <regex.h>
 
 enum {
-  TK_NOTYPE = 256, TK_EQ, TK_NUM, 
+  TK_NOTYPE = 256, TK_EQ, TK_NUM, TK_PLUS_NEGTIVE, TK_SUB_NEGTIVE,
 
   /* TODO: Add more token types */
 
@@ -35,6 +35,9 @@ static struct rule {
   /* TODO: Add more rules.
    * Pay attention to the precedence level of different rules.
    */
+
+  {"\\+ *\\-", TK_PLUS_NEGTIVE},   // pattern for '+    -'
+  {"\\- *\\-", TK_SUB_NEGTIVE},    // pattern for '-    -'
 
   {" +", TK_NOTYPE},    // spaces
 
@@ -77,7 +80,7 @@ typedef struct token {
   char str[32];
 } Token;
 
-static Token tokens[32] __attribute__((used)) = {};
+static Token tokens[1000] __attribute__((used)) = {};
 static int nr_token __attribute__((used))  = 0;
 
 static bool make_token(char *e) {
@@ -113,9 +116,18 @@ static bool make_token(char *e) {
 
         switch (rules[i].token_type)
         {
+          // '+-' -> '-'
+          case TK_PLUS_NEGTIVE:
+            tokens[nr_token].type = '-';
+            break;
+          // '--' -> '+'
+          case TK_SUB_NEGTIVE:
+            tokens[nr_token].type = '+';
+            break;
           case TK_NUM:
             strncpy(tokens[nr_token].str, substr_start, substr_len);
             tokens[nr_token].str[substr_len] = '\0';
+            break;
         }
 
         nr_token++;
@@ -220,12 +232,23 @@ word_t eval(int p, int q, bool *ok)
     *ok = false;
     assert(0);
   }
+  // ignore spaces
+  else if (tokens[p].type == TK_NOTYPE || tokens[q].type == TK_NOTYPE)
+  {
+    if (tokens[p].type == TK_NOTYPE && tokens[q].type == TK_NOTYPE)
+      return eval(p+1, q-1, ok);
+    else if (tokens[p].type == TK_NOTYPE)
+      return eval(p+1, q, ok);
+    else
+      return eval(p, q-1, ok);
+  }
   else if (p == q)
   {
     if (tokens[p].type != TK_NUM)
     {
       Log("Bad expression\n");
       *ok = false;
+      return 0;
     }
     else
     {
@@ -256,13 +279,26 @@ word_t eval(int p, int q, bool *ok)
   return 0;
 }
 
-word_t expr(char *e, bool *success) {
-  if (!make_token(e)) {
+word_t expr(char *e, bool *success)
+{
+  // lexical analysis
+  if (!make_token(e))
+  {
     *success = false;
+    
+    puts("lexical analysis error : illegal expressions");
+    
     return 0; 
   }
 
-  // TODO: can not solve the '(2 - 1)' of spaces
+  // semantic analysis & evaluation
+  word_t result = eval(0, nr_token - 1, success);
+  if (!success)
+  {
+    // failed
+    puts("lexical analysis error : illegal expressions");
+    return 0;
+  }
 
-  return eval(0, nr_token - 1, success);
+  return result;
 }

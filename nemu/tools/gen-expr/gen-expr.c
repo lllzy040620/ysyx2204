@@ -19,6 +19,7 @@
 #include <time.h>
 #include <assert.h>
 #include <string.h>
+#include<ctype.h>
 
 // this should be enough
 static char buf[65536] = {};
@@ -31,8 +32,112 @@ static char *code_format =
 "  return 0; "
 "}";
 
-static void gen_rand_expr() {
-  buf[0] = '\0';
+static char *buf_start = NULL;
+static char *buf_end = buf+(sizeof(buf)/sizeof(buf[0]));
+
+// op types
+enum {
+  TK_PLUS_NEGTIVE = 256, TK_SUB_NEGTIVE,
+};
+
+uint32_t choose (uint32_t num)
+{
+  // tools for generating num between [0, num]
+  return rand() % num;
+}
+static void gen_space()
+{
+  int amount = choose(4);
+  if (buf_start < buf_end)
+  {
+    int n_writes = snprintf(buf_start, buf_end - buf_start, "%*s", amount, "");
+    if (n_writes > 0)
+    {
+      buf_start += n_writes;
+    }
+  }
+}
+static void gen_num()
+{
+  int num = choose(INT8_MAX);
+  
+  if (buf_start < buf_end)
+  {
+    int n_writes = snprintf(buf_start, buf_end - buf_start, "%d", num);
+    if (n_writes > 0)
+    {
+      buf_start += n_writes;
+    }
+  }
+  gen_space();
+}
+static void gen(char op)
+{
+  if (buf_start < buf_end)
+  {
+    int n_writes = snprintf(buf_start, buf_end - buf_start, "%c", op);
+    if (n_writes > 0)
+    {
+      buf_start += n_writes;
+    }
+  }
+}
+static void gen_plus_negtive ()
+{
+  if (buf_start < buf_end)
+  {
+    int n_writes = snprintf(buf_start, buf_end - buf_start, "%c%c", '+', '-');
+    if (n_writes > 0)
+    {
+      buf_start += n_writes;
+    }
+  }
+}
+static void gen_sub_negtive ()
+{
+  if (buf_start < buf_end)
+  {
+    int n_writes = snprintf(buf_start, buf_end - buf_start, "%c%c", '-', '-');
+    if (n_writes > 0)
+    {
+      buf_start += n_writes;
+    }
+  }
+}
+
+// static int ops[] = {'+', '-', '*', '/'};
+// static int ops[] = {'+', '-', '*', '/', TK_PLUS_NEGTIVE, TK_SUB_NEGTIVE};
+// static int ops[] = {'+', '-', '*', '/', TK_PLUS_NEGTIVE};
+static int ops[] = {'+', '-', '*', TK_PLUS_NEGTIVE};
+
+static void gen_rand_op()
+{
+  int index = choose(sizeof(ops)/sizeof(ops[0]));
+  
+  switch (ops[index])
+  {
+    case TK_PLUS_NEGTIVE:
+      gen_plus_negtive();
+      break;
+    case TK_SUB_NEGTIVE:
+      gen_sub_negtive();
+      break;
+    default:
+      char tmp = ops[index];
+      gen(tmp);
+      break;
+  }
+}
+
+
+static void gen_rand_expr()
+{ 
+  switch (choose(3))
+  {
+    case 0: gen_num(); break;
+    case 1: gen('('); gen_rand_expr(); gen(')'); break;
+    default: gen_rand_expr(); gen_rand_op(); gen_rand_expr(); break;
+  }
 }
 
 int main(int argc, char *argv[]) {
@@ -44,7 +149,12 @@ int main(int argc, char *argv[]) {
   }
   int i;
   for (i = 0; i < loop; i ++) {
+    
+    // init
+    buf_start = buf;
+
     gen_rand_expr();
+
 
     sprintf(code_buf, code_format, buf);
 
@@ -53,17 +163,19 @@ int main(int argc, char *argv[]) {
     fputs(code_buf, fp);
     fclose(fp);
 
-    int ret = system("gcc /tmp/.code.c -o /tmp/.expr");
+    int ret = system("gcc /tmp/.code.c -Wall -Werror -o /tmp/.expr");
+    // filter div-by-zero expressions
     if (ret != 0) continue;
 
     fp = popen("/tmp/.expr", "r");
     assert(fp != NULL);
 
-    int result;
-    ret = fscanf(fp, "%d", &result);
+    uint64_t result;
+    int _ = fscanf(fp, "%lu", &result);
+    _ = _;
     pclose(fp);
 
-    printf("%u %s\n", result, buf);
+    printf("%lu %s\n", result, buf);
   }
   return 0;
 }
