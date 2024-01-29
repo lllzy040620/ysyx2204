@@ -22,11 +22,20 @@
 #include <string.h>
 
 enum {
-  TK_NOTYPE = 256, TK_EQ, TK_NUM, TK_PLUS_NEGTIVE, TK_SUB_NEGTIVE, 
-  TK_HEX_NUM, TK_REG, TK_NOT_EQ, TK_LOGICAL_AND, TK_DEREF, TK_VAR
+  TK_NOTYPE = 256, 
+
+  // unary ops
+  TK_POSITIVE, TK_NEGATIVE, TK_DEREF,
+
+  // binary ops
+  TK_EQ, TK_NOT_EQ, TK_LOGICAL_AND,
+  
+  // others
+  TK_NUM, TK_HEX_NUM, TK_REG, TK_VAR,
+  
+  TK_PLUS_NEGTIVE, TK_SUB_NEGTIVE, 
 
   /* TODO: Add more token types */
-
 };
 
 static struct rule {
@@ -38,28 +47,50 @@ static struct rule {
    * Pay attention to the precedence level of different rules.
    */
 
-  {"\\+ *\\-", TK_PLUS_NEGTIVE},   // pattern for '+    -'
-  {"\\- *\\-", TK_SUB_NEGTIVE},    // pattern for '-    -'
-
   {" +", TK_NOTYPE},    // spaces
+
+  // BELOW: unary operator
+  // EXAMPLE: "* VAR"   "+ NUM"    "- NUM"
+
+  // BELOW: binary ops
+  // {"\\+ *\\-", TK_PLUS_NEGTIVE},   // pattern for '+    -'
+  // {"\\- *\\-", TK_SUB_NEGTIVE},    // pattern for '-    -'
 
   {"\\+", '+'},         // plus
   {"\\-", '-'},         // subtraction
   {"\\*", '*'},         // multiplication
   {"\\/", '/'},         // division
-  
-  {"\\(", '('},         // brackets
-  {"\\)", ')'},
-
-  // {"0[xX][0-9a-fA-F]+", TK_HEX_NUM},     // hex numbers
-  {"[0-9]+|0[xX][0-9a-fA-F]+", TK_NUM},                    // numbers & hex numbers
-  {"\\$\\w+", TK_REG},                   // registers
-  {"[a-zA-Z_][a-zA-Z_0-9]*", TK_VAR}, // variable
 
   {"==", TK_EQ},           // equal
   {"!=", TK_NOT_EQ},       // not equal
   {"&&", TK_LOGICAL_AND},  // logical AND
+
+  // BELOW: values
+  {"[0-9]+|0[xX][0-9a-fA-F]+", TK_NUM},   // dec & hex numbers
+  {"\\$\\w+", TK_REG},                    // registers
+  
+  // BELOW: special ops
+  {"[a-zA-Z_][a-zA-Z_0-9]*", TK_VAR},     // variable
+  {"\\(", '('},         // brackets
+  {"\\)", ')'},
 };
+
+// classification for ops
+static int terminated_symbol[] = {TK_NUM, TK_REG, TK_VAR};
+static int unary_op[] = {TK_POSITIVE, TK_NEGATIVE, TK_DEREF};
+static int binary_op[] = {'+', '-', '*', '/', TK_EQ, TK_NOT_EQ, TK_LOGICAL_AND};
+// static int special[] = {};
+
+#define OFTYPES(type, types) oftypes(type, types, ARRLEN(types))
+
+static bool oftypes(int type, int types[], int size)
+{
+  for (int i = 0; i < size; i++)
+  {
+    if (type == types[i]) return true;
+  }
+  return false;
+}
 
 #define NR_REGEX ARRLEN(rules)
 
@@ -209,26 +240,55 @@ bool check_parentheses(int p, int q)
   return res; 
 }
 
-int find_major_op (int p, int q) // TODO: hard to calculate 123+(456+789) or illegal expression like 123+
+// priority: ()  ->  unary ops: *VAR  ->  */  ->  +
+// reference url: https://learn.microsoft.com/zh-cn/cpp/c-language/precedence-and-order-of-evaluation?view=msvc-170
+int find_major_op (int p, int q)
 {
+  // priority descending
+  enum PRIORITY { EN_NONE, EN_BRACKETS, EN_DEREFERENCE_POSITIVE_NEGATIVE, EN_PLUS_DIVISION, EN_ADD_SUBSTRACTION, EN_EQUAL_NOTEQUAL, EN_LOGICAL_AND} cur_type;
+  cur_type = EN_NONE;
+ 
   int in_brackets_level = 0; // Default : not in brackets
   int major_op_location = -1; // Init : do not exist
-  int major_op_type_history = 0; // stand for current layer, 1 for '+ -', 0 for '* /'
+  // int major_op_type_history = 0; // stand for current layer, 1 for '+ -', 0 for '* /'
+
 
   for (int i = p; i <= q; i++)
   {
-    if (tokens[i].type == TK_NUM || tokens[i].type == TK_REG)
+    // do not need to the occassion of '(23)'
+    if (OFTYPES(tokens[i].type, terminated_symbol))
     {
       continue;
     }
-    else if ((tokens[i].type == '+' || tokens[i].type == '-') && in_brackets_level == 0)
+    // for &&
+    else if (cur_type <= EN_LOGICAL_AND && tokens[i].type == TK_LOGICAL_AND && in_brackets_level == 0)
     {
       major_op_location = i;
-      major_op_type_history = 1;
+      cur_type = EN_LOGICAL_AND;
     }
-    else if ((tokens[i].type == '*' || tokens[i].type == '/') && major_op_type_history == 0 && in_brackets_level == 0)
+    // for == !=
+    else if (cur_type <= EN_EQUAL_NOTEQUAL && (tokens[i].type == TK_EQ || tokens[i].type == TK_NOT_EQ) && in_brackets_level == 0)
     {
       major_op_location = i;
+      cur_type = EN_EQUAL_NOTEQUAL;
+    }
+    // for +-
+    else if (cur_type <= EN_ADD_SUBSTRACTION && (tokens[i].type == '+' || tokens[i].type == '-') && in_brackets_level == 0)
+    {
+      major_op_location = i;
+      cur_type = EN_ADD_SUBSTRACTION;
+    }
+    // for */
+    else if (cur_type <= EN_PLUS_DIVISION && (tokens[i].type == '*' || tokens[i].type == '/') && in_brackets_level == 0)
+    {
+      major_op_location = i;
+      cur_type = EN_PLUS_DIVISION;
+    }
+    // for *VAR +num -num
+    else if (cur_type <= EN_DEREFERENCE_POSITIVE_NEGATIVE && (tokens[i].type == TK_POSITIVE || tokens[i].type == TK_NEGATIVE) && in_brackets_level == 0)
+    {
+      major_op_location = i;
+      cur_type = EN_DEREFERENCE_POSITIVE_NEGATIVE;
     }
     else if (tokens[i].type == '(')
     {
@@ -240,7 +300,7 @@ int find_major_op (int p, int q) // TODO: hard to calculate 123+(456+789) or ill
     }
     else
     {
-      // Log("Error 404");
+      Log("In func find_major_op(), error no match");
       continue;
     }
   }
@@ -253,7 +313,7 @@ word_t eval(int p, int q, bool *ok)
 {
   if (p > q)
   {
-    Log("Error 404\n");
+    Log("In func eval(), error: p > q");
     *ok = false;
     assert(0);
   }
@@ -269,10 +329,10 @@ word_t eval(int p, int q, bool *ok)
   }
   else if (p == q)
   {
-    // the last value should be NUM or REG
+    // TERMINATED TOKEN: the last value should be NUM or REG
     if (tokens[p].type != TK_NUM && tokens[p].type != TK_REG)
     {
-      Log("Bad expression\n");
+      Log("In func eval(), error: terminated symbol can't be resolved");
       *ok = false;
       return 0;
     }
@@ -289,16 +349,40 @@ word_t eval(int p, int q, bool *ok)
   else
   {
     int op = find_major_op(p, q);
-    int val1 = eval(p, op - 1, ok);
-    int val2 = eval(op + 1, q, ok);
 
-    switch (tokens[op].type)
+    // for binary_ops
+    if (OFTYPES(tokens[op].type, binary_op))
     {
-      case '+': return val1 + val2; break;
-      case '-': return val1 - val2; break;
-      case '*': return val1 * val2; break;
-      case '/': return val1 / val2; break;
-      default: assert(0);
+      int val1 = eval(p, op - 1, ok);
+      int val2 = eval(op + 1, q, ok);
+
+      switch (tokens[op].type)
+      {
+        case '+': return val1 + val2; break;
+        case '-': return val1 - val2; break;
+        case '*': return val1 * val2; break;
+        case '/': return val1 / val2; break;
+        case TK_EQ: return val1 == val2; break;
+        case TK_NOT_EQ: return val1 != val2; break;
+        case TK_LOGICAL_AND: return val1 && val2; break;
+        default: Log("In func eval(), error no switch result for binary ops");
+      }
+    }
+    // for unary_ops
+    else if (OFTYPES(tokens[op].type, unary_op))
+    {
+      // p is always equal to op
+      int val = eval(p+1, q, ok);
+
+      switch (tokens[op].type)
+      {
+        case TK_POSITIVE: return val; break;
+        case TK_NEGATIVE: return -val; break;
+        case TK_DEREF: 
+        //  TODO
+          return 0; break;
+        default: Log("In func eval(), error no switch result for unary ops");
+      }
     }
   }
 
@@ -317,13 +401,27 @@ word_t expr(char *e, bool *success)
     return 0; 
   }
 
-  // to recognise DEREFERENCE '*' 
+  // to recognise POSITIVE '+', NEGATIVE '-', DEREFERENCE '*' 
   for (int i = 0; i < nr_token; i ++)
   {
-    if (tokens[i].type == '*' && (i == 0 || tokens[i - 1].type == '+' || tokens[i - 1].type == '-') ) 
+    if (tokens[i].type == '+' && (i == 0 || OFTYPES(tokens[i - 1].type, binary_op) || OFTYPES(tokens[i - 1].type, unary_op)))
+    {
+      tokens[i].type = TK_POSITIVE;
+      puts("POSITIVE recognized!\n");
+    }
+    if (tokens[i].type == '-' && (i == 0 || OFTYPES(tokens[i - 1].type, binary_op) || OFTYPES(tokens[i - 1].type, unary_op)))
+    {
+      tokens[i].type = TK_NEGATIVE;
+      puts("NEGATIVE recognized!\n");
+    }
+    else if (tokens[i].type == '*' && (i == 0 || tokens[i - 1].type == '+' || tokens[i - 1].type == '-') ) 
     {
       tokens[i].type = TK_DEREF;
       puts("DEREF recognized!\n");
+    }
+    else
+    {
+      continue;
     }
 }
 
